@@ -1,24 +1,29 @@
+use std::collections::HashMap;
 use serde::{ Serialize, Deserialize };
 use chrono::{ serde::{ ts_seconds, ts_seconds_option }, DateTime, Utc };
 
 #[derive(Serialize, Deserialize)]
 pub struct App {
-    pub trackers: Vec<Tracker>,
-    pub current: Option<usize>,
+    pub trackers: HashMap<String, Tracker>,
+    pub current: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Tracker {
     title: String,
-    logs: Vec<Log>,
+    pub logs: Vec<Log>,
 }
 
 impl Tracker {
-    pub fn new(title: String) -> Self {
+    pub fn new(title: &str) -> Self {
         Self {
+            title: String::from(title),
             logs: Vec::new(),
-            title,
         }
+    }
+
+    pub fn get_title(&self) -> &str {
+        &self.title
     }
 }
 
@@ -34,7 +39,7 @@ pub struct Log {
 }
 
 impl Log {
-    pub fn new(notes: Option<String>) -> Self {
+    fn new(notes: Option<String>) -> Self {
         Self {
             start_time: Utc::now(),
             end_time: None,
