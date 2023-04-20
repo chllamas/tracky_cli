@@ -1,7 +1,10 @@
 mod db;
 mod model;
 
+use humantime::format_duration;
+use std::io::{ Error, ErrorKind };
 use clap::{ Args, Parser, Subcommand };
+use model::{ App, Log, Tracker };
 
 #[derive(Parser)]
 struct Cli {
@@ -11,29 +14,44 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    #[command(about = "Create a new tracker log")]
+    #[command(short_flag='n')]
+    #[command(about="Create a new tracker log")]
     New(NewTracker),
 
-    #[command(about = "Start timer")]
+    #[command(alias="run", short_flag='r')]
+    #[command(about="Start timer")]
     Start,
 
-    #[command(about = "Stop timer")]
+    #[command(alias="end")]
+    #[command(about="Stop timer")]
     Stop,
 
-    #[command(about = "Current timer")]
+    #[command(short_flag='c')]
+    #[command(alias="curr", alias="cur")]
+    #[command(about="Current timer")]
     Current,
 
-    #[command(about = "Switch contexts to another timer")]
+    #[command(about="Switch contexts to another timer")]
     Switch(SwitchRequest),
 
-    #[command(about = "Delete the current timer")]
-    Delete,
+    #[command(alias="del", short_flag='d')]
+    #[command(about="Delete the current timer")]
+    Delete(OptionalTitle),
 
-    #[command(about = "Displays all logs in tracker")]
+    #[command(about="Displays all logs in tracker")]
     Logs,
 
-    #[command(about = "Displays all trackers")]
+    #[command(about="Display the status of the tracker, if running")]
+    Status,
+
+    #[command(alias="ls", short_flag='l')]
+    #[command(about="Displays all trackers")]
     List,
+}
+
+#[derive(Args)]
+struct OptionalTitle {
+    title: Option<String>,
 }
 
 #[derive(Args)]
@@ -46,9 +64,36 @@ struct SwitchRequest {
     to: String,
 }
 
+fn get_tracker(data: &mut App) -> std::io::Result<&Tracker> {
+    if let Some(title) = data.current.as_ref() {
+        match data.trackers.get(title) {
+            Some(t) => Ok(t),
+            None => { 
+                data.current = None;
+                Err(Error::new(ErrorKind::NotFound, "Selected tracker no longer exists"))
+            },
+        }
+    } else {
+        Err(Error::new(ErrorKind::Other, "No tracker selected to start from"))
+    }
+}
+
+fn get_tracker_mut(data: &mut App) -> std::io::Result<&mut Tracker> {
+    if let Some(title) = data.current.as_ref() {
+        match data.trackers.get_mut(title) {
+            Some(t) => Ok(t),
+            None => { 
+                data.current = None;
+                Err(Error::new(ErrorKind::NotFound, "Selected tracker no longer exists"))
+            },
+        }
+    } else {
+        Err(Error::new(ErrorKind::Other, "No tracker selected to start from"))
+    }
+}
+
 fn main() -> std::io::Result<()> {
     use db::{ load_data, save_data };
-    use model::{ App, Tracker };
 
     let args = Cli::parse();
     let mut data: App = load_data();
@@ -62,24 +107,39 @@ fn main() -> std::io::Result<()> {
             }
             println!("Created new tracker {}", &details.title);
         },
-        Commands::Delete => {
-
+        Commands::Status => {
+            let t: &Tracker = get_tracker(&mut data)?;
+            let size: usize = t.logs.len();
+            if size > 0 {
+                let last: &Log = &t.logs[size - 1];
+                if last.is_running() {
+                    println!("Running for: {}", format_duration(last.duration()).to_string());
+                } else {
+                    println!("Tracker is idle");
+                }
+            }
+        },
+        Commands::Delete(req) => {
+            if let Some(title) = req.title.as_ref().or(data.current.as_ref()) {
+                // TODO: currently doesnt check if it even exists
+                // TODO: sets data.current to none even if it's not the one we're removing
+                println!("Removed {}", title);
+                data.trackers.remove(title);
+                data.current = None;
+            } else {
+                println!("No tracker selected");
+            }
         },
         Commands::Start => {
-
+            let t: &mut Tracker = get_tracker_mut(&mut data)?;
+            t.logs.push(Log::new(None));
         },
         Commands::Stop => {
 
         },
         Commands::Current => {
-            if let Some(title) = data.current.as_ref() {
-                match data.trackers.get(title) {
-                    Some(t) => println!("Current tracker: {}", t.get_title()),
-                    _ => { data.current = None },
-                }
-            } else {
-                println!("No tracker selected");
-            }
+            let t: &Tracker = get_tracker(&mut data)?;
+            println!("Current tracker: {}", t.get_title())
         },
         Commands::Switch(req) => {
             match data.trackers.contains_key(&req.to) {
@@ -91,7 +151,6 @@ fn main() -> std::io::Result<()> {
             };
         },
         Commands::Logs => {
-
         },
         Commands::List => {
             // it'd be better to have a separate vec stored in struct for keys pre-sorted

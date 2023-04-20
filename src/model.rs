@@ -1,6 +1,14 @@
-use std::collections::HashMap;
-use serde::{ Serialize, Deserialize };
-use chrono::{ serde::{ ts_seconds, ts_seconds_option }, DateTime, Utc };
+use std::collections::HashMap; 
+use std::io::{Error, ErrorKind};
+use std::time::{Duration, SystemTime, SystemTimeError};
+use serde::{Serialize, Deserialize};
+use humantime::format_duration;
+
+impl From<SystemTimeError> for Error {
+    fn from(err: SystemTimeError) -> Error {
+        Error::new(ErrorKind::Other, err)
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct App {
@@ -29,31 +37,35 @@ impl Tracker {
 
 #[derive(Serialize, Deserialize)]
 pub struct Log {
-    #[serde(with = "ts_seconds")]
-    start_time: DateTime<Utc>,
-
-    #[serde(with = "ts_seconds_option")]
-    end_time: Option<DateTime<Utc>>,
-
+    start_time: SystemTime,
+    end_time: Option<SystemTime>,
     notes: Option<String>,
 }
 
 impl Log {
-    fn new(notes: Option<String>) -> Self {
+    pub fn new(notes: Option<String>) -> Self {
         Self {
-            start_time: Utc::now(),
+            start_time: SystemTime::now(),
             end_time: None,
-            notes
+            notes,
         }
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.end_time.is_none()
     }
 
     fn stop(&mut self) {
         if self.end_time.is_none() {
-            self.end_time = Some(Utc::now());
+            self.end_time = Some(SystemTime::now());
         }
     }
 
-    fn duration(&self) -> Option<std::time::Duration> {
-        self.end_time.map(|end| end.signed_duration_since(self.start_time).to_std().unwrap())
+    pub fn duration(&self) -> std::io::Result<String> {
+        let dur: Duration = match self.end_time {
+            Some(end_time) => self.start_time.duration_since(end_time),
+            None => self.start_time.elapsed(),
+        }?;
+        Ok(format_duration(dur).to_string())
     }
 }
