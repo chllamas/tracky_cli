@@ -1,7 +1,6 @@
 mod db;
 mod model;
 
-use humantime::format_duration;
 use std::io::{ Error, ErrorKind };
 use clap::{ Args, Parser, Subcommand };
 use model::{ App, Log, Tracker };
@@ -92,6 +91,26 @@ fn get_tracker_mut(data: &mut App) -> std::io::Result<&mut Tracker> {
     }
 }
 
+fn get_last_log(data: &mut App) -> Option<&Log> {
+    let t: &Tracker = get_tracker(data).ok()?;
+    let size: usize = t.logs.len();
+    if size > 0 {
+        Some(&t.logs[size - 1])
+    } else {
+        None
+    }
+}
+
+fn get_last_log_mut(data: &mut App) -> Option<&mut Log> {
+    let t: &mut Tracker = get_tracker_mut(data).ok()?;
+    let size: usize = t.logs.len();
+    if size > 0 {
+        Some(&mut t.logs[size - 1])
+    } else {
+        None
+    }
+}
+
 fn main() -> std::io::Result<()> {
     use db::{ load_data, save_data };
 
@@ -108,15 +127,14 @@ fn main() -> std::io::Result<()> {
             println!("Created new tracker {}", &details.title);
         },
         Commands::Status => {
-            let t: &Tracker = get_tracker(&mut data)?;
-            let size: usize = t.logs.len();
-            if size > 0 {
-                let last: &Log = &t.logs[size - 1];
-                if last.is_running() {
-                    println!("Running for: {}", format_duration(last.duration()).to_string());
+            if let Some(last_log) = get_last_log(&mut data) {
+                if last_log.is_running() {
+                    println!("Running for: {}", last_log.duration());
                 } else {
                     println!("Tracker is idle");
                 }
+            } else {
+                println!("No tracker selected");
             }
         },
         Commands::Delete(req) => {
@@ -135,7 +153,11 @@ fn main() -> std::io::Result<()> {
             t.logs.push(Log::new(None));
         },
         Commands::Stop => {
-
+            if let Some(last_log) = get_last_log_mut(&mut data) {
+                if let Some(duration_str) = last_log.stop() {
+                    println!("Ended log after {}", duration_str);
+                }
+            }
         },
         Commands::Current => {
             let t: &Tracker = get_tracker(&mut data)?;
@@ -151,6 +173,10 @@ fn main() -> std::io::Result<()> {
             };
         },
         Commands::Logs => {
+            let t: &Tracker = get_tracker(&mut data)?;
+            for l in t.logs.iter() {
+                println!("{} -> {}", l.time0(), l.time1().unwrap_or(String::new()));
+            }
         },
         Commands::List => {
             // it'd be better to have a separate vec stored in struct for keys pre-sorted

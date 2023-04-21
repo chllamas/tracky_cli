@@ -1,14 +1,6 @@
 use std::collections::HashMap; 
-use std::io::{Error, ErrorKind};
-use std::time::{Duration, SystemTime, SystemTimeError};
+use chrono::{DateTime, Timelike, Local};
 use serde::{Serialize, Deserialize};
-use humantime::format_duration;
-
-impl From<SystemTimeError> for Error {
-    fn from(err: SystemTimeError) -> Error {
-        Error::new(ErrorKind::Other, err)
-    }
-}
 
 #[derive(Serialize, Deserialize)]
 pub struct App {
@@ -37,15 +29,15 @@ impl Tracker {
 
 #[derive(Serialize, Deserialize)]
 pub struct Log {
-    start_time: SystemTime,
-    end_time: Option<SystemTime>,
+    start_time: DateTime<Local>,
+    end_time: Option<DateTime<Local>>,
     notes: Option<String>,
 }
 
 impl Log {
     pub fn new(notes: Option<String>) -> Self {
         Self {
-            start_time: SystemTime::now(),
+            start_time: Local::now(),
             end_time: None,
             notes,
         }
@@ -55,17 +47,48 @@ impl Log {
         self.end_time.is_none()
     }
 
-    fn stop(&mut self) {
+    pub fn stop(&mut self) -> Option<String> {
         if self.end_time.is_none() {
-            self.end_time = Some(SystemTime::now());
+            self.end_time = Some(Local::now());
+            Some(self.duration())
+        } else {
+            None
         }
     }
 
-    pub fn duration(&self) -> std::io::Result<String> {
-        let dur: Duration = match self.end_time {
-            Some(end_time) => self.start_time.duration_since(end_time),
-            None => self.start_time.elapsed(),
-        }?;
-        Ok(format_duration(dur).to_string())
+    pub fn time0(&self) -> String {
+        format!(
+            "{}:{:02}:{:02}", 
+            self.start_time.hour(),
+            self.start_time.minute(),
+            self.start_time.second()
+        )
+    }
+
+    pub fn time1(&self) -> Option<String> {
+        self.end_time.and_then(|t|
+            Some(format!(
+                "{}:{:02}:{:02}", 
+                t.hour(),
+                t.minute(),
+                t.second()
+            ))
+        )
+    }
+
+    pub fn duration(&self) -> String {
+        let duration: i64 = match self.end_time {
+            Some(end_time) => end_time,
+            _ => Local::now(),
+        }.signed_duration_since(self.start_time).num_seconds();
+        let hours = duration / 3600;
+        let minutes = (duration % 3600) / 60;
+        let seconds = duration % 60;
+
+        match (hours, minutes, seconds) {
+            (0, 0, s) => format!("{}s", s),
+            (0, m, s) => format!("{}:{:02}", m, s),
+            (h, m, s) => format!("{:02}:{:02}:{:02}", h, m, s), 
+        }
     }
 }
