@@ -8,6 +8,8 @@ pub enum TrackerError {
     NoneSelected,
     DoesNotExist,
     AlreadyExists,
+    AlreadyRunning,
+    IsNotRunning,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -55,8 +57,22 @@ impl App {
         }
     }
 
-    pub fn run_tracker(&mut self, title: Option<&str>) -> Result<&str, TrackerError> {
-        todo!()
+    pub fn run_tracker(&mut self, title: Option<&str>) -> Result<String, TrackerError> {
+        let t: (&str, bool) = match (title, self.curr.as_deref()) {
+            (Some(t), _) => Ok((t, false)),
+            (_, Some(t)) => Ok((t, true)),
+            _ => Err(TrackerError::NoneSelected),
+        }?;
+
+        if let Some(tracker) = self.trackers.get(t.0) {
+            
+            Ok(t.0.to_string())
+        } else if t.1 {
+            self.curr = None;
+            Err(TrackerError::NoneSelected)
+        } else {
+            Err(TrackerError::DoesNotExist)
+        }f 
     }
 
     pub fn end_tracker(&mut self, title: Option<&str>) -> Result<&str, TrackerError> {
@@ -102,13 +118,18 @@ impl App {
     }
 
     pub fn list_all_trackers(&self) {
+        println!("{}=== Tracky ==={}", color::Fg(color::Cyan), color::Fg(color::Reset));
+
+        if self.trackers.len() == 0 {
+            println!("{}No Trackers Created{}", color::Fg(color::Red), color::Fg(color::Reset));
+            return;
+        }
+
         let mut keys: Vec<&str> = self.trackers
             .keys()
             .map(|s| s.as_str())
             .collect();
         keys.sort();
-
-        println!("{}=== Tracky ==={}", color::Fg(color::Cyan), color::Fg(color::Reset));
 
         let curr_title: &str = self.curr.as_deref().unwrap_or("");
         for title in keys {
@@ -134,6 +155,25 @@ impl Tracker {
 
     pub fn get_title(&self) -> &str {
         &self.title
+    }
+
+    fn last_log(&self) -> Option<&Log> {
+        let len = self.logs.len();
+        if len > 0 {
+            Some(&self.logs[len - 1])
+        } else {
+            None
+        }
+    }
+
+    pub fn start_up(&mut self, notes: Option<&str>) -> Result<(), TrackerError> {
+        if let Some(log) = self.last_log() {
+            if log.is_running() {
+                return Err(TrackerError::AlreadyRunning);
+            }
+        }
+        self.logs.push(Log::new(notes.map(|s| s.to_string())));
+        Ok(())
     }
 
     pub fn ouput_last_3_logs(&self) {
