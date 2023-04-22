@@ -35,7 +35,7 @@ enum Commands {
     Logs(OptionalTitle),
 
     #[command(about="Display the status of the tracker, if running")]
-    Status,
+    Status(OptionalTitle),
 
     #[command(alias="ls", short_flag='l')]
     #[command(about="Displays all trackers")]
@@ -58,15 +58,16 @@ fn main() -> std::io::Result<()> {
     let args = Cli::parse();
     let mut data: App = load_data();
 
+    #[allow(unused_must_use)]
     match &args.command {
         Commands::New(request) => { data.new_tracker(&request.title); },
-        Commands::Status => { data.output_state_of_tracker(); },
+        Commands::Status(opt_request) => { data.output_state_of_tracker(opt_request.title.as_deref()); },
         Commands::Delete(opt_request) => { data.del_tracker(opt_request.title.as_deref()); },
         Commands::Start(opt_request) => { data.run_tracker(opt_request.title.as_deref()); },
         Commands::Stop(opt_request) => { data.end_tracker(opt_request.title.as_deref()); },
         Commands::Switch(request) => { data.swp_tracker(&request.title); },
         Commands::Logs(opt_request) => { data.log_tracker(opt_request.title.as_deref()); },
-        Commands::List => { data.list_all(); },
+        Commands::List => { data.list_all_trackers(); },
     };
 
     save_data(data)

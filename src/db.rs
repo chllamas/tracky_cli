@@ -12,11 +12,11 @@ pub fn get_file_path() -> PathBuf {
 }
 
 pub fn load_data() -> App {
-    let json: String = fs::read_to_string(&get_file_path()).unwrap_or(String::new());
+    let json: String = fs::read_to_string(get_file_path()).unwrap_or(String::new());
     serde_json::from_str(&json).unwrap_or(App::new())
 }
 
 pub fn save_data(data: App) -> std::io::Result<()> {
     let json = serde_json::to_string(&data)?;
-    fs::write(&get_file_path(), json)
+    fs::write(get_file_path(), json)
 }

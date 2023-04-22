@@ -1,7 +1,9 @@
 use std::collections::HashMap; 
 use chrono::{DateTime, Timelike, Local};
 use serde::{Serialize, Deserialize};
+use termion::color;
 
+#[allow(unused)]
 pub enum TrackerError {
     NoneSelected,
     DoesNotExist,
@@ -14,6 +16,8 @@ pub struct App {
     curr: Option<String>,
 }
 
+#[allow(dead_code)]
+#[allow(unused)]
 impl App {
     pub fn new() -> Self {
         Self {
@@ -28,8 +32,8 @@ impl App {
             .and_then(|title| self.trackers.get(title))
     }
 
-    pub fn output_state_of_tracker(&self) {
-        todo!();
+    pub fn output_state_of_tracker(&self, title: Option<&str>) -> Result<String, TrackerError> {
+        todo!()
     }
 
     pub fn new_tracker<'a>(&'a mut self, title: &'a str) -> Result<&str, TrackerError> {
@@ -59,21 +63,62 @@ impl App {
         todo!()
     }
 
-    pub fn swp_tracker(&mut self, title: &str) -> Result<&str, TrackerError> {
-        todo!()
+    pub fn swp_tracker<'a>(&'a mut self, title: &'a str) -> Result<&'a str, TrackerError> {
+        if self.trackers.contains_key(title) {
+            self.curr = Some(String::from(title));
+            Ok(title)
+        } else {
+            Err(TrackerError::DoesNotExist)
+        }
     }
 
-    pub fn log_tracker(&self, title: Option<&str>) -> Result<&str, TrackerError> {
-        todo!()
+    fn print_all_logs(&self, tracker: &Tracker) {
+        for log in tracker.logs.iter() {
+            if log.is_running() {
+                println!("{} {}", log.duration(), log.get_note());
+            } else {
+                println!("{} -> {} {}", log.time0(), log.time1().as_deref().unwrap_or(""), log.get_note());
+            }
+        }
     }
 
-    pub fn list_all(&self) {
-        todo!();
+    /* Returns &str of the title printed out for */
+    pub fn log_tracker(&mut self, title: Option<&str>) -> Result<String, TrackerError> {
+        let t: (&str, bool) = match (title, self.curr.as_deref()) {
+            (Some(t), _) => Ok((t, false)),
+            (_, Some(t)) => Ok((t, true)),
+            _ => Err(TrackerError::NoneSelected),
+        }?;
+        
+        if let Some(tracker) = self.trackers.get(t.0) {
+            self.print_all_logs(tracker);
+            Ok(t.0.to_string())
+        } else if t.1 {
+            self.curr = None;
+            Err(TrackerError::NoneSelected)
+        } else {
+            Err(TrackerError::DoesNotExist)
+        }
+    }
+
+    pub fn list_all_trackers(&self) {
+        let mut keys: Vec<&str> = self.trackers
+            .keys()
+            .map(|s| s.as_str())
+            .collect();
+        keys.sort();
+
+        println!("{}=== Tracky ==={}", color::Fg(color::Cyan), color::Fg(color::Reset));
+
+        let curr_title: &str = self.curr.as_deref().unwrap_or("");
+        for title in keys {
+            println!("{}{}", if title == curr_title {"> "} else {"  "}, title);
+        }
     }
 }
 
 #[derive(Serialize, Deserialize)]
-struct Tracker {
+pub struct Tracker {
     title: String,
     logs: Vec<Log>,
 }
@@ -104,7 +149,7 @@ impl Tracker {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Log {
+pub struct Log {
     start_time: DateTime<Local>,
     end_time: Option<DateTime<Local>>,
     notes: Option<String>,
@@ -147,13 +192,13 @@ impl Log {
     }
 
     pub fn time1(&self) -> Option<String> {
-        self.end_time.and_then(|t|
-            Some(format!(
+        self.end_time.map(|t|
+            format!(
                 "{}:{:02}:{:02}", 
                 t.hour(),
                 t.minute(),
                 t.second()
-            ))
+            )
         )
     }
 
