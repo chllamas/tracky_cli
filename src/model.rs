@@ -72,7 +72,7 @@ impl App {
             Err(TrackerError::NoneSelected)
         } else {
             Err(TrackerError::DoesNotExist)
-        }f 
+        } 
     }
 
     pub fn end_tracker(&mut self, title: Option<&str>) -> Result<&str, TrackerError> {
@@ -120,7 +120,7 @@ impl App {
     pub fn list_all_trackers(&self) {
         println!("{}=== Tracky ==={}", color::Fg(color::Cyan), color::Fg(color::Reset));
 
-        if self.trackers.len() == 0 {
+        if self.trackers.is_empty() {
             println!("{}No Trackers Created{}", color::Fg(color::Red), color::Fg(color::Reset));
             return;
         }
