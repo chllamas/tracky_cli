@@ -18,7 +18,7 @@ enum Commands {
 
     #[command(alias="run", short_flag='r')]
     #[command(about="Start timer")]
-    Start(OptionalTitle),
+    Start(OptionalTitleAndNote),
 
     #[command(alias="end")]
     #[command(about="Stop timer")]
@@ -48,6 +48,12 @@ struct OptionalTitle {
 }
 
 #[derive(Args)]
+struct OptionalTitleAndNote {
+    title: Option<String>,
+    note: Option<String>,
+}
+
+#[derive(Args)]
 struct RequiredTitle {
     title: String,
 }
@@ -60,10 +66,11 @@ fn main() -> std::io::Result<()> {
 
     #[allow(unused_must_use)]
     match &args.command {
+        /* must handle errors and print out stuff */
         Commands::New(request) => { data.new_tracker(&request.title); },
         Commands::Status(opt_request) => { data.output_state_of_tracker(opt_request.title.as_deref()); },
         Commands::Delete(opt_request) => { data.del_tracker(opt_request.title.as_deref()); },
-        Commands::Start(opt_request) => { data.run_tracker(opt_request.title.as_deref()); },
+        Commands::Start(opt_request) => { data.run_tracker(opt_request.title.as_deref(), opt_request.note.as_deref()); },
         Commands::Stop(opt_request) => { data.end_tracker(opt_request.title.as_deref()); },
         Commands::Switch(request) => { data.swp_tracker(&request.title); },
         Commands::Logs(opt_request) => { data.log_tracker(opt_request.title.as_deref()); },

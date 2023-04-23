@@ -10,6 +10,7 @@ pub enum TrackerError {
     AlreadyExists,
     AlreadyRunning,
     IsNotRunning,
+    NoLogs,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -18,9 +19,42 @@ pub struct App {
     curr: Option<String>,
 }
 
-#[allow(dead_code)]
-#[allow(unused)]
+// refPackage, isCurrent
+struct TrackerPackage<'a>(&'a str, bool);
+
 impl App {
+    fn get_tracker(&self, title: Option<&str>) -> Result<&Tracker, TrackerError> {
+        let t: TrackerPackage = match (title, self.curr.as_deref()) {
+            (Some(t), _) => Ok(TrackerPackage(t, false)),
+            (_, Some(t)) => Ok(TrackerPackage(t, true)),
+            _ => Err(TrackerError::NoneSelected),
+        }?;
+
+        if let Some(tracker) = self.trackers.get(t.0) {
+            Ok(tracker)
+        } else if t.1 {
+            Err(TrackerError::NoneSelected)
+        } else {
+            Err(TrackerError::DoesNotExist)
+        }
+    }
+
+    fn get_tracker_mut(&mut self, title: Option<&str>) -> Result<&mut Tracker, TrackerError> {
+        let t: TrackerPackage = match (title, self.curr.as_deref()) {
+            (Some(t), _) => Ok(TrackerPackage(t, false)),
+            (_, Some(t)) => Ok(TrackerPackage(t, true)),
+            _ => Err(TrackerError::NoneSelected),
+        }?;
+
+        if let Some(tracker) = self.trackers.get_mut(t.0) {
+            Ok(tracker)
+        } else if t.1 {
+            Err(TrackerError::NoneSelected)
+        } else {
+            Err(TrackerError::DoesNotExist)
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             trackers: HashMap::new(),
@@ -28,14 +62,16 @@ impl App {
         }
     }
 
-    pub fn current(&self) -> Option<&Tracker> {
-        self.curr
-            .as_ref()
-            .and_then(|title| self.trackers.get(title))
-    }
-
     pub fn output_state_of_tracker(&self, title: Option<&str>) -> Result<String, TrackerError> {
-        todo!()
+        let tracker: &Tracker = self.get_tracker(title)?;
+
+        Ok(format!(
+                "{}: {}{}{}",
+                tracker.get_title(),
+                color::Fg(color::LightCyan),
+                if tracker.is_running() {"running"} else {"idle"},
+                color::Fg(color::Reset)
+        ))
     }
 
     pub fn new_tracker<'a>(&'a mut self, title: &'a str) -> Result<&str, TrackerError> {
@@ -50,33 +86,25 @@ impl App {
         }
     }
 
-    pub fn del_tracker(&mut self, title: Option<&str>) -> Result<&str, TrackerError> {
-        match title {
-            Some(t) => todo!(),
-            None => todo!(),
-        }
+    pub fn del_tracker(&mut self, title: Option<&str>) -> Result<(), TrackerError> {
+        self.trackers
+            .remove(title.unwrap_or(""))
+            .map(|_| ())
+            .ok_or(TrackerError::DoesNotExist)
     }
 
-    pub fn run_tracker(&mut self, title: Option<&str>) -> Result<String, TrackerError> {
-        let t: (&str, bool) = match (title, self.curr.as_deref()) {
-            (Some(t), _) => Ok((t, false)),
-            (_, Some(t)) => Ok((t, true)),
-            _ => Err(TrackerError::NoneSelected),
-        }?;
+    pub fn run_tracker(&mut self, title: Option<&str>, notes: Option<&str>) -> Result<String, TrackerError> {
+        let tracker: &mut Tracker = self.get_tracker_mut(title)?;
 
-        if let Some(tracker) = self.trackers.get(t.0) {
-            
-            Ok(t.0.to_string())
-        } else if t.1 {
-            self.curr = None;
-            Err(TrackerError::NoneSelected)
-        } else {
-            Err(TrackerError::DoesNotExist)
-        } 
+        tracker
+            .up(notes)
+            .map(|()| "Running...".to_string()) 
     }
 
-    pub fn end_tracker(&mut self, title: Option<&str>) -> Result<&str, TrackerError> {
-        todo!()
+    pub fn end_tracker(&mut self, title: Option<&str>) -> Result<String, TrackerError> {
+        let tracker: &mut Tracker = self.get_tracker_mut(title)?;
+
+        tracker.down().map(|n| format!("Stopping... {}", n))
     }
 
     pub fn swp_tracker<'a>(&'a mut self, title: &'a str) -> Result<&'a str, TrackerError> {
@@ -99,22 +127,11 @@ impl App {
     }
 
     /* Returns &str of the title printed out for */
-    pub fn log_tracker(&mut self, title: Option<&str>) -> Result<String, TrackerError> {
-        let t: (&str, bool) = match (title, self.curr.as_deref()) {
-            (Some(t), _) => Ok((t, false)),
-            (_, Some(t)) => Ok((t, true)),
-            _ => Err(TrackerError::NoneSelected),
-        }?;
-        
-        if let Some(tracker) = self.trackers.get(t.0) {
-            self.print_all_logs(tracker);
-            Ok(t.0.to_string())
-        } else if t.1 {
-            self.curr = None;
-            Err(TrackerError::NoneSelected)
-        } else {
-            Err(TrackerError::DoesNotExist)
-        }
+    pub fn log_tracker(&self, title: Option<&str>) -> Result<String, TrackerError> {
+        let tracker: &Tracker = self.get_tracker(title)?;
+
+        self.print_all_logs(tracker);
+        Ok(title.unwrap().to_string())
     }
 
     pub fn list_all_trackers(&self) {
@@ -157,6 +174,14 @@ impl Tracker {
         &self.title
     }
 
+    pub fn is_running(&self) -> bool {
+        if let Some(log) = self.last_log() {
+            log.is_running()
+        } else {
+            false
+        }
+    }
+
     fn last_log(&self) -> Option<&Log> {
         let len = self.logs.len();
         if len > 0 {
@@ -166,7 +191,16 @@ impl Tracker {
         }
     }
 
-    pub fn start_up(&mut self, notes: Option<&str>) -> Result<(), TrackerError> {
+    fn last_log_mut(&mut self) -> Option<&mut Log> {
+        let len = self.logs.len();
+        if len > 0 {
+            Some(&mut self.logs[len - 1])
+        } else {
+            None
+        }
+    }
+
+    pub fn up(&mut self, notes: Option<&str>) -> Result<(), TrackerError> {
         if let Some(log) = self.last_log() {
             if log.is_running() {
                 return Err(TrackerError::AlreadyRunning);
@@ -174,6 +208,20 @@ impl Tracker {
         }
         self.logs.push(Log::new(notes.map(|s| s.to_string())));
         Ok(())
+    }
+
+    pub fn down(&mut self) -> Result<String, TrackerError> {
+        match self.last_log_mut() {
+            Some(log) => {
+                if log.is_running() {
+                    log.stop();
+                    Ok(log.get_note().to_string())
+                } else {
+                    Err(TrackerError::IsNotRunning)
+                }
+            },
+            None => Err(TrackerError::NoLogs),
+        }
     }
 
     pub fn ouput_last_3_logs(&self) {
