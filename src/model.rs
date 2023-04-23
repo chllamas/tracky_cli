@@ -306,3 +306,18 @@ impl Log {
         }
     }
 }
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::App;
+
+    // what do we test?
+    // printing ls in order
+    // accurately getting status indicators
+    // accurately adding a new item
+    // accurately removing item 
+    // accurately updating start and end 
+    // accurately logging all time tracks 
+}
