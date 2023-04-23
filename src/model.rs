@@ -6,8 +6,8 @@ use termion::color;
 #[allow(unused)]
 pub enum TrackerError {
     NoneSelected,
-    DoesNotExist,
-    AlreadyExists,
+    DoesNotExist(String),
+    AlreadyExists(String),
     AlreadyRunning,
     IsNotRunning,
     NoLogs,
@@ -35,7 +35,7 @@ impl App {
         } else if t.1 {
             Err(TrackerError::NoneSelected)
         } else {
-            Err(TrackerError::DoesNotExist)
+            Err(TrackerError::DoesNotExist(t.0.to_string()))
         }
     }
 
@@ -51,7 +51,7 @@ impl App {
         } else if t.1 {
             Err(TrackerError::NoneSelected)
         } else {
-            Err(TrackerError::DoesNotExist)
+            Err(TrackerError::DoesNotExist(t.0.to_string()))
         }
     }
 
@@ -74,21 +74,21 @@ impl App {
         ))
     }
 
-    pub fn new_tracker<'a>(&'a mut self, title: &'a str) -> Result<&str, TrackerError> {
+    pub fn new_tracker<'a>(&'a mut self, title: &'a str) -> Result<String, TrackerError> {
         if !self.trackers.contains_key(title) {
             self.trackers.insert(String::from(title), Tracker::new(title));
             if self.curr.is_none() {
                 self.curr = Some(String::from(title));
             }
-            Ok(title)
+            Ok(title.to_string())
         } else {
-            Err(TrackerError::AlreadyExists)
+            Err(TrackerError::AlreadyExists(title.to_string()))
         }
     }
 
-    pub fn del_tracker(&mut self, title: Option<&str>) -> Result<(), TrackerError> {
+    pub fn del_tracker(&mut self, title: Option<&str>) -> Result<String, TrackerError> {
         self.trackers
-            .remove(title.unwrap_or(""))
+            .remove(title)
             .map(|_| ())
             .ok_or(TrackerError::DoesNotExist)
     }

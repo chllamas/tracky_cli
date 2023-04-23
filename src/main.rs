@@ -4,6 +4,8 @@ mod model;
 use clap::{ Args, Parser, Subcommand };
 use model::App;
 
+use crate::model::TrackerError;
+
 #[derive(Parser)]
 struct Cli {
     #[command(subcommand)]
@@ -58,17 +60,35 @@ struct RequiredTitle {
     title: String,
 }
 
+fn default_error_handler(e: TrackerError) {
+    match e {
+        TrackerError::NoneSelected => println!("No tracker is selected!"),
+        TrackerError::AlreadyExists => println!("Tracker of same name already exists!"),
+        TrackerError::
+}
+
 fn main() -> std::io::Result<()> {
     use db::{ load_data, save_data };
 
     let args = Cli::parse();
     let mut data: App = load_data();
 
-    #[allow(unused_must_use)]
     match &args.command {
         /* must handle errors and print out stuff */
-        Commands::New(request) => { data.new_tracker(&request.title); },
-        Commands::Status(opt_request) => { data.output_state_of_tracker(opt_request.title.as_deref()); },
+        Commands::New(request) => {
+            match data.new_tracker(&request.title) {
+                Ok(title) => println!("Inserted {}", title),
+                Err(TrackerError::AlreadyExists) => println!("{} already exists!", &request.title),
+                _ => unreachable!(),
+            };
+        },
+        Commands::Status(opt_request) => {
+            match data.output_state_of_tracker(opt_request.title.as_deref()) {
+                Ok(output) => println!(output),
+                Err(TrackerError::NoneSelected) => println!("No tracker selected"),
+
+            }
+        },
         Commands::Delete(opt_request) => { data.del_tracker(opt_request.title.as_deref()); },
         Commands::Start(opt_request) => { data.run_tracker(opt_request.title.as_deref(), opt_request.note.as_deref()); },
         Commands::Stop(opt_request) => { data.end_tracker(opt_request.title.as_deref()); },
