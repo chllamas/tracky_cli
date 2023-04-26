@@ -20,17 +20,21 @@ pub struct App {
 }
 
 // refPackage, isCurrent
-struct TrackerPackage<'a>(&'a str, bool);
+struct TrackerPackage(String, bool);
 
 impl App {
-    fn get_tracker(&self, title: Option<&str>) -> Result<&Tracker, TrackerError> {
-        let t: TrackerPackage = match (title, self.curr.as_deref()) {
-            (Some(t), _) => Ok(TrackerPackage(t, false)),
-            (_, Some(t)) => Ok(TrackerPackage(t, true)),
+    fn decide_title(&self, title: Option<&str>) -> Result<TrackerPackage, TrackerError> {
+        match (title, self.curr.as_deref()) {
+            (Some(t), _) => Ok(TrackerPackage(t.to_string(), false)),
+            (_, Some(t)) => Ok(TrackerPackage(t.to_string(), true)),
             _ => Err(TrackerError::NoneSelected),
-        }?;
+        }
+    }
 
-        if let Some(tracker) = self.trackers.get(t.0) {
+    fn get_tracker(&self, title: Option<&str>) -> Result<&Tracker, TrackerError> {
+        let t: TrackerPackage = self.decide_title(title)?;
+
+        if let Some(tracker) = self.trackers.get(&t.0) {
             Ok(tracker)
         } else if t.1 {
             Err(TrackerError::NoneSelected)
@@ -40,13 +44,9 @@ impl App {
     }
 
     fn get_tracker_mut(&mut self, title: Option<&str>) -> Result<&mut Tracker, TrackerError> {
-        let t: TrackerPackage = match (title, self.curr.as_deref()) {
-            (Some(t), _) => Ok(TrackerPackage(t, false)),
-            (_, Some(t)) => Ok(TrackerPackage(t, true)),
-            _ => Err(TrackerError::NoneSelected),
-        }?;
+        let t: TrackerPackage = self.decide_title(title)?;
 
-        if let Some(tracker) = self.trackers.get_mut(t.0) {
+        if let Some(tracker) = self.trackers.get_mut(&t.0) {
             Ok(tracker)
         } else if t.1 {
             Err(TrackerError::NoneSelected)
@@ -64,14 +64,19 @@ impl App {
 
     pub fn output_state_of_tracker(&self, title: Option<&str>) -> Result<String, TrackerError> {
         let tracker: &Tracker = self.get_tracker(title)?;
+        let mut ret: Vec<String> = vec![];
 
-        Ok(format!(
+        ret.push(format!(
                 "{}: {}{}{}",
                 tracker.get_title(),
                 color::Fg(color::LightCyan),
                 if tracker.is_running() {"running"} else {"idle"},
                 color::Fg(color::Reset)
-        ))
+        ));
+
+        ret.push(tracker.get_last_3_logs());
+
+        Ok(ret.join("\n"))
     }
 
     pub fn new_tracker<'a>(&'a mut self, title: &'a str) -> Result<String, TrackerError> {
@@ -87,10 +92,12 @@ impl App {
     }
 
     pub fn del_tracker(&mut self, title: Option<&str>) -> Result<String, TrackerError> {
+        let target: String = self.decide_title(title).map(|t| t.0)?;
+
         self.trackers
-            .remove(title)
-            .map(|_| ())
-            .ok_or(TrackerError::DoesNotExist)
+            .remove(&target)
+            .map(|t| t.get_title().to_string())
+            .ok_or(TrackerError::DoesNotExist(title.unwrap_or("").to_string()))
     }
 
     pub fn run_tracker(&mut self, title: Option<&str>, notes: Option<&str>) -> Result<String, TrackerError> {
@@ -112,7 +119,7 @@ impl App {
             self.curr = Some(String::from(title));
             Ok(title)
         } else {
-            Err(TrackerError::DoesNotExist)
+            Err(TrackerError::DoesNotExist(title.to_string()))
         }
     }
 
@@ -224,15 +231,21 @@ impl Tracker {
         }
     }
 
-    pub fn ouput_last_3_logs(&self) {
-        let last_three_logs: &[Log] = &self.logs[self.logs.len() - 3 ..];
-        for log in last_three_logs {
+    pub fn get_last_3_logs(&self) -> String {
+        let mut ret: Vec<String> = vec![];
+        let last_three_logs: &[Log] = if self.logs.len() >= 3 {&self.logs[self.logs.len() - 3 ..]} else {&self.logs[..]};
+        for log in last_three_logs.iter().rev() {
             if log.is_running() {
-                println!("... {} {}", log.duration(), log.get_note());
+                ret.push(format!("{}{} {}{}", color::Fg(color::LightCyan), log.duration(), log.get_note(), color::Fg(color::Reset)));
             } else {
-                println!("{} -> {} {}", log.time0(), log.time1().unwrap(), log.get_note());
+                ret.push(format!("{} -> {} {}", log.time0(), log.time1().unwrap(), log.get_note()));
             }
         }
+        ret.join("\n")
+    }
+
+    pub fn ouput_last_3_logs(&self) {
+        println!("{}", self.get_last_3_logs());
     }
 }
 
@@ -254,7 +267,7 @@ impl Log {
     }
 
     pub fn get_note(&self) -> &str {
-        self.notes.as_deref().unwrap_or("")
+        self.notes.as_deref().unwrap_or("<untitled>")
     }
 
     pub fn is_running(&self) -> bool {
